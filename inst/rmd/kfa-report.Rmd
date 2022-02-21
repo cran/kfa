@@ -6,7 +6,7 @@ flextable::set_flextable_defaults(fonts_ignore = TRUE)
 
 plot.settings <- list(what = "std", whatLabels = "no", layout = "tree",
                         intercepts = FALSE, residuals = FALSE, thresholds = FALSE,
-                        cut = load.flag, posCol = c("#BF0000","#000000"), fade = FALSE,
+                        fade = FALSE, posCol = c("#000000"), # "#BF0000"), cut = load.flag, # can update to more nuanced coloring of plots
                         # edge.color = , # could create custom function to utilize this argument
                         weighted = TRUE, negDashed = TRUE, esize = 5,
                         manifests = vnames, reorder = FALSE)
@@ -43,14 +43,16 @@ date: "`r format(Sys.Date(), '%B %d, %Y')`"
 **Fit across folds by factor model**
 
 ```{r model fit, ft.align = "left", results='asis'}
-index <- index[index != "df"] 
-fit.map <- data.frame(col_keys = names(fit.table),
-                      top = c("model", "df", rep(index, each = 2)),
-                      bottom = c("model", "df", rep(c("mean", "range"), times = length(index))))
+ftn <- names(fit.table)
+df <- ftn[grepl("df", ftn)] # naive or scaled?
+index <- unique(gsub("mean.|range.", "", ftn[!ftn %in% c("model", df)]))
+fit.map <- data.frame(col_keys = ftn,
+                      top = c("model", df, rep(index, each = 2)),
+                      bottom = c("model", df, rep(c("mean", "range"), times = length(index))))
 
 fit.flex <- flextable::flextable(fit.table)
 fit.flex <- flextable::colformat_double(fit.flex, j = -c(1,2), digits = digits)
-fit.flex <- two_level_flex(fit.flex, mapping = fit.map, vert.cols = c("model", "df"), border = border)
+fit.flex <- two_level_flex(fit.flex, mapping = fit.map, vert.cols = c("model", df), border = border)
 knit_print(fit.flex)
 ```
 
@@ -103,21 +105,35 @@ for(n in 1:m){
   cat("\n\n")
   cat("**Factor Structure**")
   cat("\n\n")
-  cat(gsub("\n", "\n\n", kstructures[kstructures$model == mnames[[n]],]$structure))
+  cat(gsub("0\\*", "0\\\\*",gsub("\n", "\n\n", kstructures[kstructures$model == mnames[[n]],]$structure)))
   cat("\n\n")
   ## find fold with lavaan object for the model
   for(f in 1:k){
   if(mnames[[n]] %in% names(models$cfas[[f]])) break  
 }
-    do.call(semPlot::semPaths, args = c(list(object = models$cfas[[f]][[mnames[[n]]]],
+    suppressWarnings(do.call(semPlot::semPaths, args = c(list(object = models$cfas[[f]][[mnames[[n]]]],
                                            color = list(lat = palette.colors(n = n + 1, palette = "Okabe-Ito",
                                                         recycle = TRUE)[-1]),
                                            title = FALSE),
-                                      plot.settings))
+                                      plot.settings)))
   cat("\n\n")
   cat("**Standardized Loading Across Folds**")
   cat("\n\n")
-  lambda.flex <- flextab_format(klambdas$loadings[[n]], bold.type = "none", digits = digits)
+  if(ncol(klambdas$loadings[[n]]) == 8){
+    
+      load.map <- data.frame(col_keys = names(klambdas$loadings[[n]]),
+                      top = c("variable", rep("primary factor", 3), "heywood flag", rep("secondary factor", 3)),
+                      bottom = c("variable", c("mean", "range", "loading flag", "heywood flag", "mean", "range", "loading flag")))
+      lambda.flex <- flextable::flextable(klambdas$loadings[[n]])
+      lambda.flex <- flextable::colformat_double(lambda.flex,
+                                                 j = which(unlist(lapply(klambdas$loadings[[n]], is.numeric))),
+                                                 digits = digits)
+      lambda.flex <- two_level_flex(lambda.flex, mapping = load.map,
+                                    vert.cols = c("variable", "heywood flag"), border = border)
+    
+  } else{
+      lambda.flex <- flextab_format(klambdas$loadings[[n]], bold.type = "none", digits = digits)
+  }
   cat(knit_print(lambda.flex))
   cat("Note: loadings flagged when <", load.flag, "in a fold. 'heywood flag' is the number of folds the variable's estimated residual variance was negative")
   cat("\n\n")
@@ -150,7 +166,8 @@ for(n in 1:m){
 ## Within Fold Model Fit
 
 ```{r appendix.fits, ft.align = "left", results='asis'}
-index <- if(sum(grepl("df", index)) == 0) c("df", index) else index
+index <- names(appendix)[!names(appendix) %in% "fold"]
+index <- unique(sub(".[^.]*$", "", index))
 
 ax <- length(index)*length(mnames)
 if(ax <= 16){ # is the appendix a reasonable width?
@@ -165,7 +182,7 @@ appendix.flex
   
 } else { # If not, split into two tables 
 
-  modsplit <- floor(16/length(index))
+modsplit <- floor(16/length(index))
 colsplit <- 1+length(index)*modsplit
 appendix1 <- appendix[1:colsplit]
 appendix2 <- appendix[c(1, (colsplit+1):length(appendix))]

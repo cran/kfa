@@ -13,6 +13,8 @@ kfa(
   custom.cfas = NULL,
   power.args = list(rmsea0 = 0.05, rmseaA = 0.08),
   rotation = "oblimin",
+  simple = TRUE,
+  threshold = NA,
   ordered = FALSE,
   estimator = NULL,
   missing = "listwise",
@@ -20,9 +22,9 @@ kfa(
 )
 }
 \arguments{
-\item{variables}{a \code{data.frame} (or convertible to a \code{data.frame}) of variables to factor analyze}
+\item{variables}{a \code{data.frame} (or convertible to a \code{data.frame}) of variables (i.e., items) to factor analyze}
 
-\item{k}{an integer between 2 and 10; number of folds in which to split the data. Default is \code{NULL} which determines k via \code{\link[kfa]{find_k}}.}
+\item{k}{number of folds in which to split the data. Default is \code{NULL} which determines k via \code{\link[kfa]{find_k}}.}
 
 \item{m}{integer; maximum number of factors to extract. Default is 4 items per factor.}
 
@@ -37,39 +39,44 @@ kfa(
 \item{rotation}{character (case-sensitive); any rotation method listed in
 \code{\link[GPArotation]{rotations}} in the \code{GPArotation} package. Default is "oblimin".}
 
+\item{simple}{logical; Should the simple structure be returned (default) when converting EFA results to CFA syntax?
+If \code{FALSE}, items can cross-load on multiple factors.}
+
+\item{threshold}{numeric between 0 and 1 indicating the minimum (absolute) value of the loading for a variable on a factor when converting EFA results to CFA syntax. Must be specified when \code{simple = FALSE}.}
+
 \item{ordered}{logical; Should items be treated as ordinal and the
 polychoric correlations used in the factor analysis? When \code{FALSE} (default)
 the Pearson correlation matrix is used. A character vector of item names is
 also accepted to prompt estimation of the polychoric correlation matrix.}
 
-\item{estimator}{if \code{ordered = FALSE}, the default is "ML". If
-\code{ordered = TRUE}, the default is "DWLS". See \code{\link[lavaan]{lavaan}} for other options.}
+\item{estimator}{if \code{ordered = FALSE}, the default is "MLMVS". If
+\code{ordered = TRUE}, the default is "WLSMV". See \code{\link[lavaan]{lavOptions}} for other options.}
 
-\item{missing}{default is "listwise". See \code{\link[lavaan]{lavaan}} for other options.}
+\item{missing}{default is "listwise". See \code{\link[lavaan]{lavOptions}} for other options.}
 
 \item{...}{other arguments passed to \code{lavaan} functions. See \code{\link[lavaan]{lavOptions}}.}
 }
 \value{
 An object of class \code{"kfa"}, which is a four-element \code{list}:
 \itemize{
-\item **cfas** \code{lavaan} CFA objects for each *k* fold
-\item **cfa.syntax** syntax used to produce CFA objects
-\item **model.names** vector of names for CFA objects
-\item **efa.structures** all factor structures identified in the EFA
+\item \strong{cfas} \code{lavaan} CFA objects for each \emph{k} fold
+\item \strong{cfa.syntax} syntax used to produce CFA objects
+\item \strong{model.names} vector of names for CFA objects
+\item \strong{efa.structures} all factor structures identified in the EFA
 }
 }
 \description{
-The function splits the data into *k* folds. For each fold,
+The function splits the data into \emph{k} folds. For each fold,
 EFAs are run on the training data and the simple structure for each model
 is transformed into \code{lavaan}-compatible CFA syntax. The CFAs are then run
 on the test data.
 }
 \details{
 In order to be tested along with the EFA identified structures, each model supplied in \code{custom.cfas} must
-include all \code{variables} in \code{lavaan} compatible syntax. Thus, to test a model dropping when
-a variable, have the variable load on to a factor while constraining the loading to 0.
+include all \code{variables} in \code{lavaan} compatible syntax. To test a model when dropping
+a variable, have the variable load on to one factor while constraining the loading to 0.
 
-Deciding an appropriate *m* can be difficult, but is consequential for both the possible factor structures to
+Deciding an appropriate \emph{m} can be difficult, but is consequential for both the possible factor structures to
 examine and the computation time. The \code{n_factors} in the \code{parameters} package
 can assist with this decision.
 }

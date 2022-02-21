@@ -16,9 +16,9 @@
 #' @return named vector with the number of folds, sample size suggested by the power analysis, and the actual sample size used for determining k.
 #'
 #' @references
-#' Curran, P. J., Bollen, K. A., Chen, F., Paxton, P., & Kirby, J. B. (2003). Finite sampling properties of the point estimates and confidence intervals of the RMSEA. *Sociological Methods & Research, 32*(2), 208-252. <doi:10.1177/0049124103256130>
+#' Curran, P. J., Bollen, K. A., Chen, F., Paxton, P., & Kirby, J. B. (2003). Finite sampling properties of the point estimates and confidence intervals of the RMSEA. *Sociological Methods & Research, 32*(2), 208-252. \doi{10.1177/0049124103256130}
 #'
-#' MacCallum, R. C., Browne, M. W., & Sugawara, H. M. (1996). Power analysis and determination of sample size for covariance structure modeling. *Psychological Methods, 1*(2), 130–149. <doi:10.1037/1082989X.1.2.130>
+#' MacCallum, R. C., Browne, M. W., & Sugawara, H. M. (1996). Power analysis and determination of sample size for covariance structure modeling. *Psychological Methods, 1*(2), 130–149. \doi{10.1037/1082-989X.1.2.130}
 #'
 #' @examples
 #' find_k(n = 900, p = 20, m = 3)
@@ -28,6 +28,7 @@
 #'
 #' @importFrom semTools findRMSEAsamplesize
 #' @export
+#' @md
 
 find_k <- function(variables, n, p, m = NULL, max.k = 10, min.n = 200,
                   rmsea0 = .05, rmseaA = .08, ...){

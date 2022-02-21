@@ -34,6 +34,7 @@ agg_loadings <- function(models, flag = .30, digits = 2){
   names(lflag) <- mnames
   hflag <- vector("integer", m)  # heywood case flag
   names(hflag) <- mnames
+
   for(n in mnames){
     lambdas <- vector("list", k)
     thetas <- vector("list", k)
@@ -41,33 +42,76 @@ agg_loadings <- function(models, flag = .30, digits = 2){
     hey.flag <- vector("integer", k)
     for(f in 1:k){
       if(n %in% names(cfas[[f]])){
-      ## gather standardized loadings
-       l.temp <- lavaan::standardizedSolution(cfas[[f]][[n]], "std.lv", se = FALSE)
-       lambdas[[f]] <- l.temp[l.temp$op == "=~",]
+        ## gather standardized loadings
+        l.temp <- lavaan::standardizedSolution(cfas[[f]][[n]], "std.all", se = FALSE)
+        lambdas[[f]] <- l.temp[l.temp$op == "=~",]
 
-      # flag for model summary table
-      load.flag[[f]] <- sum(lambdas[[f]]$est.std < flag)
+        # flag for model summary table
+        load.flag[[f]] <- sum(lambdas[[f]]$est.std < flag)
 
-      ## gather residual variances
-      t.temp <- lavaan::parameterestimates(cfas[[f]][[n]], se = FALSE)
-      thetas[[f]] <- t.temp[t.temp$op == "~~" & t.temp$lhs %in% vnames & t.temp$lhs == t.temp$rhs,]
+        ## gather residual variances
+        t.temp <- lavaan::parameterestimates(cfas[[f]][[n]], se = FALSE)
+        thetas[[f]] <- t.temp[t.temp$op == "~~" & t.temp$lhs %in% vnames & t.temp$lhs == t.temp$rhs,]
 
-
-      # flag for model summary table
-      hey.flag[[f]] <- sum(thetas[[f]]$est < 0)
+        # flag for model summary table
+        hey.flag[[f]] <- sum(thetas[[f]]$est < 0)
       }
     }
     lambdas <- do.call("rbind", lambdas)
     thetas <- do.call("rbind", thetas)
 
+    # identifying cross-loading items
+    byfactor <- tapply(lambdas$est.std, INDEX = list(lambdas$lhs, lambdas$rhs), sum) # most any function will do; we do not use the value in the cells, only care if NA
+    cls <- names(which(apply(byfactor, 2, function(x) sum(!is.na(x)) > 1))) # cross-loading variables
 
-    klambdas[[n]] <- data.frame(variable = vnames,
-                                mean = tapply(lambdas$est.std, lambdas$rhs, mean),
-                                range = paste(format(round(tapply(lambdas$est.std, lambdas$rhs, min), digits = digits), nsmall = digits), "-",
-                                                format(round(tapply(lambdas$est.std, lambdas$rhs, max), digits = digits), nsmall = digits)),
-                                `loading flag` = tapply(lambdas$est.std, lambdas$rhs, function(x) sum(x < flag)),
-                                `heywood flag` = tapply(thetas$est, thetas$rhs, function(x) sum(x < 0)),
-                                check.names = FALSE)
+    if(length(cls) > 0){ # only search for cross-loading secondary factor if needed
+
+      # is.na(lambdas$est.std) <- !lambdas$est.std # converts 0 to NA; don't need to do this though b/c the variable would be constrained in all folds
+      lambdas$f.v <- paste(lambdas$lhs, lambdas$op, lambdas$rhs) # adds column of factor by variable strings
+
+      fv.means <- tapply(lambdas$est.std, lambdas$f.v, mean) # mean loading for each factor-variable pair
+      ord <- lapply(cls, function(x) sort(fv.means[grepl(x, names(fv.means))], decreasing = TRUE)) # ordering means
+      p <- unlist(lapply(ord, function(x) names(x)[[1]])) # extracting primary factor
+      s <- unlist(lapply(ord, function(x) names(x)[[2]])) # extracting secondary factor
+      # need both p and s in case there are tertiary cross-loadings, which we will not report
+
+      primary <- lambdas[!lambdas$rhs %in% cls | lambdas$f.v %in% p,]
+      secondary <- lambdas[lambdas$f.v %in% s,]
+
+
+      primary.df <- data.frame(mean = tapply(primary$est.std, primary$rhs, mean),
+                               range = paste(format(round(tapply(primary$est.std, primary$rhs, min), digits = digits), nsmall = digits), "-",
+                                             format(round(tapply(primary$est.std, primary$rhs, max), digits = digits), nsmall = digits)),
+                               `loading flag` = tapply(primary$est.std, primary$rhs, function(x) sum(x < flag)),
+                               `heywood flag` = tapply(thetas$est, thetas$rhs, function(x) sum(x < 0)),
+                               check.names = FALSE)
+      primary.df <- cbind(data.frame(variable = row.names(primary.df)), primary.df)
+
+      # note: secondary does not have heywood flag b/c that is a variable level indicator, not variable by factor level indicator
+      secondary.df <- data.frame(mean.s = tapply(secondary$est.std, secondary$rhs, mean),
+                                 range.s = paste(format(round(tapply(secondary$est.std, secondary$rhs, min), digits = digits), nsmall = digits), "-",
+                                                 format(round(tapply(secondary$est.std, secondary$rhs, max), digits = digits), nsmall = digits)),
+                                 `loading flag.s` = tapply(secondary$est.std, secondary$rhs, function(x) sum(x < flag)),
+                                 check.names = FALSE)
+      secondary.df <- cbind(data.frame(variable = row.names(secondary.df)), secondary.df)
+
+      kl <- merge(primary.df, secondary.df, by = "variable", all = TRUE, sort = FALSE) # sorting has to happen in next lines
+      kl$variable <- factor(kl$variable, levels = vnames)
+      # row.names(kl) <- NULL
+      klambdas[[n]] <- kl[order(kl$variable),]
+
+    } else {
+
+      kl <- data.frame(mean = tapply(lambdas$est.std, lambdas$rhs, mean),
+                       range = paste(format(round(tapply(lambdas$est.std, lambdas$rhs, min), digits = digits), nsmall = digits), "-",
+                                     format(round(tapply(lambdas$est.std, lambdas$rhs, max), digits = digits), nsmall = digits)),
+                       `loading flag` = tapply(lambdas$est.std, lambdas$rhs, function(x) sum(x < flag)),
+                       `heywood flag` = tapply(thetas$est, thetas$rhs, function(x) sum(x < 0)),
+                       check.names = FALSE)
+      # order dataframe by vnames
+      kl <- cbind(data.frame(variable = factor(row.names(kl), levels = vnames)), kl)
+      klambdas[[n]] <- kl[order(kl$variable),]
+    }
 
     ## count of folds with a loading under flag threshold
     lflag[[n]] <- sum(load.flag > 0)
@@ -88,9 +132,9 @@ agg_loadings <- function(models, flag = .30, digits = 2){
 #' @param flag threshold above which a factor correlation will be flagged
 #' @param type currently ignored; \code{"factor"} (default) or \code{"observed"} variable correlations
 #'
-#' @return a \code{data.frame} of mean factor correlations for each factor model and \code{vector} with count of folds with a flagged correlation
+#' @return \code{data.frame} of mean factor correlations for each factor model and \code{vector} with count of folds with a flagged correlation
 #'
-#' #' @examples
+#' @examples
 #' data(example.kfa)
 #' agg_cors(example.kfa)
 #'
@@ -109,9 +153,11 @@ agg_cors <- function(models, flag = .90, type = "factor"){
 
 
   kcorrs <- vector("list", m)
+  names(kcorrs) <- mnames
   kflag <- vector("integer", m)
+  names(kflag) <- mnames
+
   # Currently assumes the first element is a 1 factor model; need a more robust check
-  kcorrs[[1]] <- NULL
   kflag[[1]] <- NA
   if(m > 1){
     for(n in 2:m){
@@ -135,13 +181,12 @@ agg_cors <- function(models, flag = .90, type = "factor"){
       aggcorrs <- z2r(aggcorrs)
       diag(aggcorrs) <- 1       # change diagonals from NaN to 1
       aggcorrs[upper.tri(aggcorrs, diag = FALSE)] <- NA
-      aggcorrs <- cbind(data.frame(rn = row.names(aggcorrs)),
-                        aggcorrs, data.frame(flag = cflag))
+      aggcorrs <- cbind(data.frame(rn = row.names(aggcorrs)), aggcorrs)
+      # cflag names are alphabetical, rather than original factor order so must merge with sort = F
+      aggcorrs <- merge(aggcorrs, data.frame(rn = names(cflag), flag = cflag),
+                        by = "rn", all = TRUE, sort = FALSE)
       kcorrs[[n]] <- aggcorrs
-
     }
-    names(kcorrs) <- mnames
-    names(kflag) <- mnames
   }
 
 
@@ -154,6 +199,8 @@ agg_cors <- function(models, flag = .90, type = "factor"){
 #' @param r correlation
 #'
 #' @return z-score
+#'
+#' @noRd
 
 r2z <- function(r){
   0.5 * log((1 + r)/(1 - r))
@@ -164,6 +211,8 @@ r2z <- function(r){
 #' @param z z-score
 #'
 #' @return correlation
+#'
+#' @noRd
 
 z2r <- function(z){
   (exp(2 * z) - 1)/(1 + exp(2 * z))
@@ -177,7 +226,7 @@ z2r <- function(z){
 #' @param flag threshold below which reliability will be flagged
 #' @param digits integer; number of decimal places to display in the report.
 #'
-#' @return a \code{data.frame} of mean factor (scale) reliabilities for each factor model and \code{vector} with count of folds with a flagged reliability
+#' @return \code{data.frame} of mean factor (scale) reliabilities for each factor model and \code{vector} with count of folds with a flagged reliability
 #'
 #' @examples
 #' data(example.kfa)
@@ -200,7 +249,9 @@ agg_rels <- function(models, flag = .60, digits = 2){
   what <- if(lavaan::lavInspect(cfas[[1]][[1]], "categorical")) "omega3" else c("omega3", "alpha")
 
   krels <- vector("list", m)
+  names(krels) <- mnames
   kflag <- vector("integer", m)
+  names(kflag) <- mnames
   for(n in 1:m){
     rels <- vector("list", k)
     rel.flag <- vector("integer", k)
@@ -222,7 +273,7 @@ agg_rels <- function(models, flag = .60, digits = 2){
       fnames <- dimnames(aos)[[1]] # should be the equivalent of rep(fn, nrow(aos))
     }
 
-    rdf <- data.frame(factor = fn)
+    rdf <- data.frame(factor = sort(fn)) # need to use sort b/c that is the order tapply will output
     for(w in 1:length(what)){
       test <- data.frame(mean = tapply(aos[, w], fnames, mean),
                          range = paste(format(round(tapply(aos[, w], fnames, min), digits = digits), nsmall = digits), "-",
@@ -232,206 +283,30 @@ agg_rels <- function(models, flag = .60, digits = 2){
       rdf <- cbind(rdf, test)
 
     }
-    krels[[n]] <- rdf
+    rdf$factor <- factor(rdf$factor, levels = fn)
+    krels[[n]] <- rdf[order(rdf$factor),]
 
     ## count of folds with a reliabilities below flag threshold
     kflag[[n]] <- sum(rel.flag > 0)
   }
-  names(krels) <- mnames
-  names(kflag) <- mnames
 
   return(list(reliabilities = krels,
               flag = kflag))
 }
-
-#' Extract model fit
-#'
-#' Model fit indices extracted from k-folds
-#'
-#' @param models An object returned from \code{\link[kfa]{kfa}}
-#' @param index One or more fit indices to summarize in the report. The degrees of freedom are always reported. Default are "chisq", "cfi", and "rmsea".
-#' @param by.fold Should each element in the returned lists be a fold (default) or a factor model?
-#'
-#' @return \code{list} of data.frames with average model fit for each factor model
-#'
-#' @examples
-#' data(example.kfa)
-#'
-#' # customize fit indices to report
-#' k_model_fit(example.kfa, index = c("chisq", "cfi", "rmsea", "srmr"))
-#'
-#' # organize results by factor model rather than by fold
-#' k_model_fit(example.kfa, by.fold = FALSE)
-#'
-#' @export
-
-k_model_fit <- function(models, index = c("chisq", "cfi", "rmsea"), by.fold = TRUE){
-
-  if(class(models) == "kfa"){
-    cfas <- models$cfas
-  } else {
-    stop("models must be of class 'kfa'.")
-  }
-  k <- length(cfas) # number of folds
-  m <- max(unlist(lapply(cfas, length))) # number of models per fold
-  index <- if(sum(grepl("df", index)) == 0) c("df", index) else index
-
-  ## extract fit for every model in each fold
-  fits <- vector("list", length = k)
-  for(f in 1:k){
-    fits[[f]] <- lapply(cfas[[f]], function(x) {
-      if(lavaan::lavInspect(x, "converged")){  # can only extract fit from models that converged
-        lavaan::fitmeasures(x, index)
-      }
-    })
-    fits[[f]] <- fits[[f]][lengths(fits[[f]]) != 0] # dropping NULL elements (models that did not converge)
-  }
-
-  model.names <- lapply(fits, names) # list with unique set of names for each fold
-
-  ## organize output by folds
-    kfits <- vector("list", length = k)
-    for(f in 1:k){
-      if(length(fits[[f]]) == 1){
-        fbind <- as.data.frame(matrix(data = fits[[f]][[1]], nrow = 1, dimnames = list(NULL, index)))
-      } else{
-        fbind <- as.data.frame(Reduce(rbind, fits[[f]]))
-      }
-      fits.df <- cbind(data.frame(model = model.names[[f]]),
-                       fbind)
-      row.names(fits.df) <- NULL
-      kfits[[f]] <- fits.df
-    }
-    ## organize output by model
-    if(by.fold == FALSE){
-
-      for(i in 1:length(kfits)){ # Add column for fold
-        kfits[[i]] <- cbind(fold = i, kfits[[i]])
-      }
-      mfits <- Reduce(rbind, kfits) # bind folds into single dataframe
-      # create separate list for each unique model
-      mods <- models$model.names
-      kfits <- vector("list", length(mods))
-      for(i in 1:length(mods)){
-
-        temp <- mfits[mfits$model == mods[[i]],]
-        temp$model <- NULL
-        kfits[[i]] <- temp
-
-      }
-      names(kfits) <- mods
-    }
-  return(kfits)
-}
-
-#' Summary table of model fit
-#'
-#' Summary table of model fit aggregated over k-folds
-#'
-#' @param kfits An object returned from \code{\link[kfa]{k_model_fit}} when \code{by.folds = TRUE}
-#' @param index One or more fit indices to summarize in the report. The degrees of freedom are always reported. Default are "chisq", "cfi", and "rmsea".
-#' @param digits integer; number of decimal places to display in the report.
-#'
-#' @return \code{data.frame} of aggregated model fit statistics
-#'
-#' @examples
-#' data(example.kfa)
-#' fits <- k_model_fit(example.kfa, by.fold = TRUE)
-#' agg_model_fit(fits)
-#'
-#' @export
-
-agg_model_fit <- function(kfits, index = c("chisq", "cfi", "rmsea"), digits = 2){
-
-  # if(!index %in% names(kfits[[1]])){
-  #   stop("index must be fit measure(s) extracted in kfits")
-  # }
-
-  index <- index[index != "df"] # df is added automatically so don't need to loop through it
-  bdf <- Reduce(rbind, kfits)
-  degf <- tapply(bdf[["df"]], bdf$model, mean) # named (by model) vector of degrees of freedom
-  fit <- data.frame(model = names(degf),
-                    df = degf)
-  for(i in index){
-
-    agg <- data.frame(model = names(degf),
-                      mean = tapply(bdf[[i]], bdf$model, mean),
-                      range = paste(format(round(tapply(bdf[[i]], bdf$model, min), digits = digits), nsmall = digits), "-",
-                                    format(round(tapply(bdf[[i]], bdf$model, max), digits = digits), nsmall = digits)))
-    # hist = tapply(bdf[[index]], bdf$factors, function(x) skimr::skim(x)[["numeric.hist"]])
-    names(agg) <- c("model", paste(c("mean", "range"), i, sep = "."))
-
-
-    # joining into single table
-    fit <- merge(x = fit, y = agg, by = "model", all.x = TRUE, sort = FALSE)
-  }
-
-  return(fit)
-}
-
-#' Internal appendix function
-#'
-#' Prepare model fit results for appendix table
-#'
-#' @param fits An element from the list object returned from \code{\link[kfa]{k_model_fit}} when \code{by.folds = FALSE}
-#' @param index One or more fit indices to include in the appendix table. Default is \code{"all"} indices present in \code{fits}. The degrees of freedom are always reported.
-#' @param suffix character to append to column names
-#'
-#' @return \code{data.frame} of model fit by fold, factor model, and fit index
-
-appendix_prep <- function(fits, index, suffix){
-
-  fits <- fits[c("fold", "df", index)]
-  fits <- rbind(fits, cbind(data.frame(fold = "Mean", data.frame(t(colMeans(fits[-1]))))))
-  names(fits) <- c("fold", paste(c("df", index), suffix, sep = "."))
-  return(fits)
-}
-
-#' Appendix of model fit
-#'
-#' Comprehensive model fit table
-#'
-#' @param mfits An object returned from \code{\link[kfa]{k_model_fit}} when \code{by.folds = FALSE}
-#' @param index One or more fit indices to include in the appendix table. Default is \code{"all"} indices present in \code{mfits}. The degrees of freedom are always reported.
-#'
-#' @return \code{data.frame} of model fit by fold, factor model, and fit index
-
-get_appendix <- function(mfits, index = "all"){
-
-  k <- max(unlist(lapply(mfits, nrow))) # number of folds
-
-  if(length(index) == 1){
-    if(index == "all"){
-      index <- names(mfits[[1]])[!(names(mfits[[1]]) %in% c("fold", "df"))]
-    }
-  }
-
-  appendix <- mapply(appendix_prep, fits = mfits, suffix = names(mfits), MoreArgs = list(index = index), SIMPLIFY = FALSE)
-  appendix.df <- appendix[[1]]
-  if(length(mfits) > 1){
-    for(i in 2:length(mfits)){
-      appendix.df <- merge(appendix.df, appendix[[i]], by = "fold", all.x = TRUE)
-    }
-  }
-  appendix.df$fold <- factor(appendix.df$fold, levels = c(1:k, "Mean"))
-  appendix.df <- appendix.df[order(appendix.df$fold),]
-  row.names(appendix.df) <- NULL
-
-  return(appendix.df)
-}
-
 
 #' Flag model problems
 #'
 #' Internal function to create table of flag counts
 #'
 #' @param models An object returned from \code{\link[kfa]{kfa}}
-#' @param strux An object returned from \code{\link[kfa]{model_structure}} when \code{which = "cfa"}
+#' @param strux An object returned from \code{\link[kfa]{model_structure}}
 #' @param loads An object returned from \code{\link[kfa]{agg_loadings}}
 #' @param cors An object returned from \code{\link[kfa]{agg_cors}}
 #' @param rels An object returned from \code{\link[kfa]{agg_rels}}
 #'
 #' @return a \code{data.frame}
+#'
+#' @noRd
 
 model_flags <- function(models, strux, loads, cors, rels){
 
@@ -458,10 +333,12 @@ model_flags <- function(models, strux, loads, cors, rels){
 
   # flagged if either indicates an improper solution
   temp <- c(unlist(cnvgd) == FALSE, unlist(hey) == FALSE)
-  improper <-tapply(temp, names(temp), sum)
+  improper <-tapply(temp, names(temp), sum) # orders output alphabetically
+  # adjust order to match model.names and other flags
+  improper <- improper[order(factor(names(improper), levels=models$model.names))]
 
   ## joining flags into data.frame
-  flags <- data.frame(model = models$model.names,  # assumes first fold contains all models in the same order as other folds
+  flags <- data.frame(model = models$model.names,
                       `improper solution` = improper,
                       `heywood item` = loads$heywood,
                       `low loading` = loads$flag,

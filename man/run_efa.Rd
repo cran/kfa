@@ -10,7 +10,9 @@ run_efa(
   rotation = "oblimin",
   simple = TRUE,
   threshold = NA,
-  single.item = c("keep", "drop", ""),
+  single.item = c("keep", "drop", "none"),
+  identified = TRUE,
+  constrain0 = FALSE,
   ordered = FALSE,
   estimator = NULL,
   missing = "listwise",
@@ -18,7 +20,7 @@ run_efa(
 )
 }
 \arguments{
-\item{variables}{a \code{data.frame} (or convertible to a \code{data.frame}) of variables to factor analyze}
+\item{variables}{a \code{data.frame} (or convertible to a \code{data.frame}) of variables (i.e., items) to factor analyze}
 
 \item{m}{integer; maximum number of factors to extract. Default is 4 items per factor.}
 
@@ -37,6 +39,11 @@ Use \code{"keep"} (default) to keep them in the model when generating the CFA sy
 to remove them, or \code{"none"} indicating the CFA syntax should not be generated for
 this model and \code{""} will be returned.}
 
+\item{identified}{logical; Should identification check for rotational uniqueness a la Millsap (2001) be performed?}
+
+\item{constrain0}{logical; Should variable(s) with all loadings below \code{threshold} still be included in model syntax?
+If \code{TRUE}, variable(s) will load onto first factor with the loading constrained to 0.}
+
 \item{ordered}{logical; Should items be treated as ordinal and the
 polychoric correlations used in the factor analysis? When \code{FALSE} (default)
 the Pearson correlation matrix is used. A character vector of item names is
@@ -52,12 +59,16 @@ also accepted to prompt estimation of the polychoric correlation matrix.}
 \value{
 A three-element \code{list}:
 \itemize{
-\item **efas** \code{lavaan} object for each *m* model
-\item **loadings** (rotated) factor loading matrix for each *m* model
-\item **cfa.syntax** CFA syntax generated from loadings
+\item \strong{efas} \code{lavaan} object for each \emph{m} model
+\item \strong{loadings} (rotated) factor loading matrix for each \emph{m} model
+\item \strong{cfa.syntax} CFA syntax generated from loadings
 }
-
-#' @examples
+}
+\description{
+This function is intended for use on independent samples rather than integrated
+with k-fold cross-validation.
+}
+\examples{
 
 # simulate data based on a 3-factor model with standardized loadings
 sim.mod <- "f1 =~ .7*x1 + .8*x2 + .3*x3 + .7*x4 + .6*x5 + .8*x6 + .4*x7
@@ -73,8 +84,5 @@ sim.data <- simstandard::sim_standardized(sim.mod, n = 900,
                                           errors = FALSE)[c(2:9,1,10:20)]
 # Run 1-, 2-, and 3-factor models
 efas <- run_efa(sim.data, m = 3)
-}
-\description{
-This function is intended for use on independent samples rather than integrated
-with k-fold cross-validation.
+
 }

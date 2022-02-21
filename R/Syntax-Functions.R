@@ -1,7 +1,6 @@
-#' Create factor analysis syntax
+#' Write exploratory factor analysis syntax
 #'
-#' \code{write_efa} converts variable names to exploratory factor analysis syntax whereas
-#' \code{efa_efa_syntax} uses the loadings matrix (presumably from an EFA) to generate confirmatory factory analysis syntax.
+#' Converts variable names to lavaan compatible exploratory factor analysis syntax
 #'
 #' @param nf integer; number of factors
 #' @param vnames character vector; names of variables to include in the efa
@@ -9,7 +8,6 @@
 #' @return character. Use \code{cat()} to best examine the returned syntax.
 #'
 #' @examples
-#' # write efa syntax
 #' vnames <- paste("x", 1:10)
 #' syntax <- write_efa(nf = 2, vnames = vnames)
 #' cat(syntax)
@@ -23,13 +21,16 @@ write_efa <- function(nf, vnames){
     syntax <- c(syntax, paste0("f", f, " =~ ", paste(vnames[f:length(vnames)], collapse = " + "), "\n"))
     if (f == nf) break
   }
-  syntax
+  return(syntax)
 }
 
 
 
 
-#' @rdname write_efa
+#' Write confirmatory factor analysis syntax
+#'
+#' Uses the factor loadings matrix, presumably from an exploratory factor analysis, to generate lavaan compatible confirmatory factory analysis syntax.
+#'
 #' @param loadings matrix of factor loadings
 #' @param simple logical; Should the simple structure be returned (default)?
 #' If \code{FALSE}, items can cross-load on multiple factors.
@@ -39,9 +40,11 @@ write_efa <- function(nf, vnames){
 #' Use \code{"keep"} (default) to keep them in the model when generating the CFA syntax, \code{"drop"}
 #' to remove them, or \code{"none"} indicating the CFA syntax should not be generated for
 #' this model and \code{""} will be returned.
+#' @param identified logical; Should identification check for rotational uniqueness a la Millsap (2001) be performed?
+#' @param constrain0 logical; Should variable(s) with all loadings below \code{threshold} still be included in model syntax?
+#' If \code{TRUE}, variable(s) will load onto first factor with the loading constrained to 0.
 #'
 #' @examples
-#' # write cfa syntax
 #' loadings <- matrix(c(rep(.2, 3), rep(.6, 3), rep(.8, 3), rep(.3, 3)), ncol = 2)
 #' efa_cfa_syntax(loadings) # simple structure
 #' efa_cfa_syntax(loadings, simple = FALSE, threshold = .25) # allow cross-loadings
@@ -49,7 +52,8 @@ write_efa <- function(nf, vnames){
 #' @export
 
 efa_cfa_syntax <- function(loadings, simple = TRUE, threshold = NA,
-                           single.item = c("keep", "drop", "none")){
+                           single.item = c("keep", "drop", "none"),
+                           identified = TRUE, constrain0 = FALSE){
 
   if(simple == FALSE & is.na(threshold)){
     stop("threshold must be supplied when simple = FALSE")
@@ -60,6 +64,7 @@ efa_cfa_syntax <- function(loadings, simple = TRUE, threshold = NA,
 
     vnames <- paste0("v", 1:dim(loadings)[[1]]) # variable
     fnames <- paste0("f", 1:dim(loadings)[[2]]) # factor
+    dimnames(loadings) <- list(vnames, fnames) # only really needed when identified == TRUE
 
   } else {
 
@@ -67,19 +72,40 @@ efa_cfa_syntax <- function(loadings, simple = TRUE, threshold = NA,
     fnames <- dimnames(loadings)[[2]] # factor
   }
 
+  # obtaining pattern matrix with NAs elsewhere
+  loadings.max <- loadings
   if(simple == TRUE){
     # largest (absolute) loading for each item
     maxload <- apply(abs(loadings), 1, max)
-  } else {
-    maxload <- c(rep(NA, length(vnames)))
+    for(v in 1:length(vnames)){
+
+      thresh <- max(maxload[[v]], threshold, na.rm = TRUE)
+      loadings.max[v, ][abs(loadings.max[v, ]) < thresh] <- NA
+    }
+  } else{
+    loadings.max <- t(apply(loadings.max, 1, function(x) ifelse(abs(x) < threshold, NA, x)))
   }
 
-  # obtaining simple structure matrix with NAs elsewhere
-  loadings.max <- loadings
-  for(v in 1:length(vnames)){
+  # if not rotationally unique, "" is returned
+  if(identified == TRUE){
 
-    thresh <- max(maxload[[v]], threshold, na.rm = TRUE)
-    loadings.max[v, ][abs(loadings.max[v, ]) < thresh] <- NA
+    # list of variable names for each factor
+    all.items <- apply(loadings.max, 2, function(x) names(x[!is.na(x)]), simplify = FALSE)
+
+    # is
+    id.check <- vector("logical", length(all.items))
+    for(i in 1:length(all.items)){
+      id.check[[i]] <- any(!all.items[[i]] %in% unlist(all.items[-i]))
+    }
+    if(!all(id.check)){
+      cfa.syntax <- ""
+      return(cfa.syntax)
+    }
+  }
+
+  if(constrain0 == TRUE){
+    # Any loadings below threshold on all factors?
+    dropped <- which(rowSums(is.na(loadings.max)) == ncol(loadings.max))
   }
 
   # returns vector with each element being the lavaan syntax identifying the factor
@@ -89,6 +115,9 @@ efa_cfa_syntax <- function(loadings, simple = TRUE, threshold = NA,
                     paste0(fnames[[fn]], " =~ ",
                            paste(vnames[!is.na(loadings.max[,fn])],
                                  collapse = " + ")))
+    if(fn == 1 & constrain0 == TRUE){
+      cfa.syntax <- if(length(dropped) > 0) paste(cfa.syntax, "+", paste(paste0("0*", names(dropped)), collapse = " + ")) else cfa.syntax
+    }
   }
 
   # What to do with single item factors?
@@ -129,51 +158,69 @@ efa_cfa_syntax <- function(loadings, simple = TRUE, threshold = NA,
 #' Extract unique factor structures across the k-folds
 #'
 #' @param models An object returned from \code{\link[kfa]{kfa}}
-#' @param which Should the unique structures be extracted from the "cfa" \code{lavaan} or "efa" syntax?
 #'
-#' @return \code{lavaan} syntax specifying the unique structures within each factor model
-#' in a \code{data.frame} when \code{which = "cfa"} or, when \code{which = "efa"}, a \code{list}
-#' containing the structure and the folds where the structure was identified
+#' @return \code{data.frame} with the number of folds the unique factor structure was tested for each factor model.
+#'
+#' @examples
+#' data(example.kfa)
+#' model_structure(example.kfa)
+#'
+#' @export
 
-model_structure <- function(models, which = "cfa"){
+model_structure <- function(models){
 
-  if(which == "cfa"){
+  if(class(models) == "kfa"){
     syntax <- models$cfa.syntax
-  } else if(which == "efa"){
-    syntax <- models$efas
+  } else {
+    stop("models must be of class 'kfa'.")
   }
 
   k <- length(syntax)
 
-  if(which == "efa"){
-    m <- max(unlist(lapply(syntax, length)))
-    kstructures <- vector("list", length = m)
+  structures <- Reduce(rbind,
+                       lapply(1:k,function(x) data.frame(model = names(syntax[[x]]),
+                                                         structure = unlist(syntax[[x]]))))
+  kstructures <- unique(structures[structures$structure != "",])
+  # there is probably a more efficient way to add folds
+  folds <- as.data.frame(table(structures[structures$structure != "",]$structure))
+  names(folds) <- c("structure", "folds")
 
-    # currently assumes 1-factor structure exists and is the same over folds
-    kstructures[[1]][[1]] <- list(structure = syntax[[1]][[1]], folds = 1:k)
-    for(n in 2:m){
-      structures <- vector("list", length = k)
-      for(f in 1:k){
-        structures[[f]] <- syntax[[f]][[n]]
-      }
-      kstructures[[n]] <- match_structure(structures)
+  kstructures <- merge(kstructures, folds, by = "structure", all.x = TRUE, sort = FALSE)
+  kstructures[,c(2,1,3)]
+  kstructures$model <- factor(kstructures$model, levels = names(syntax[[1]]))
+  kstructures <- kstructures[order(kstructures$model),]
+
+  # row.names(kstructures) <- NULL
+
+  return(kstructures)
+}
+
+
+#' Unique factor structures from EFA
+#'
+#' Extract unique factor structures across the k-folds from exploratory factor analysis
+#'
+#' @param syntax list containing \code{lavaan} compatible CFA syntax returned from \code{\link[kfa]{k_efa}}
+#'
+#' @return \code{list} containing the structure and the folds where the structure was identified
+#'
+#' @noRd
+
+model_structure_efa <- function(syntax){
+
+  k <- length(syntax)
+
+  m <- max(unlist(lapply(syntax, length)))
+  kstructures <- vector("list", length = m)
+
+  # currently assumes 1-factor structure exists and is the same over folds
+  kstructures[[1]][[1]] <- list(structure = syntax[[1]][[1]], folds = 1:k)
+  for(n in 2:m){
+    structures <- vector("list", length = k)
+    for(f in 1:k){
+      structures[[f]] <- syntax[[f]][[n]]
     }
-  } else if(which == "cfa"){
-
-    structures <- Reduce(rbind,
-                         lapply(1:k,function(x) data.frame(model = names(syntax[[x]]),
-                                                           structure = unlist(syntax[[x]]))))
-    kstructures <- unique(structures[structures$structure != "",])
-    # there is probably a more efficient way to add folds
-    folds <- as.data.frame(table(structures[structures$structure != "",]$structure))
-    names(folds) <- c("structure", "folds")
-
-    kstructures <- merge(kstructures, folds, by = "structure", all.x = TRUE, sort = FALSE)
-    kstructures[,c(2,1,3)]
-    kstructures$model <- factor(kstructures$model, levels = names(syntax[[1]]))
-    kstructures <- kstructures[order(kstructures$model),]
-
-    # row.names(kstructures) <- NULL
+    kstructures[[n]] <- match_structure(structures)
   }
 
   return(kstructures)
@@ -186,6 +233,8 @@ model_structure <- function(models, which = "cfa"){
 #' @param structures list of \code{lavaan} syntax
 #'
 #' @return For each unique structure, a \code{list} containing \code{lavaan} syntax specifying the factor structure and the folds where the structure was identified
+#'
+#' @noRd
 
 match_structure <- function(structures){
 
