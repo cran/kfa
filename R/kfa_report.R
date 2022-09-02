@@ -15,7 +15,7 @@
 #' @param rel.flag numeric; factor (scale) reliabilities below this value will be flagged. Default is .60.
 #' @param digits integer; number of decimal places to display in the report.
 #'
-#' @return a summary report of factor structures and model fit within and between folds
+#' @return A summary report of factor structures and model fit within and between folds.
 #'
 #' @examples
 #'
@@ -37,7 +37,7 @@
 #'                    "\nf2 =~ ",paste(colnames(sim.data)[11:20], collapse = " + "))
 #'
 #' \donttest{
-#' mods <- kfa(variables = sim.data,
+#' mods <- kfa(data = sim.data,
 #'             k = NULL, # prompts power analysis to determine number of folds
 #'             cores = 2,
 #'             custom.cfas = custom2f)
@@ -70,7 +70,7 @@ kfa_report <- function(models,
                        load.flag = .30, cor.flag = .90, rel.flag = .60,
                        digits = 2){
 
-  if(class(models) == "kfa"){
+  if(inherits(models, "kfa")){
     cfas <- models$cfas
   } else {
     stop("models must be of class 'kfa'.")
@@ -91,6 +91,8 @@ kfa_report <- function(models,
   ## summarizing fit statistics by fold
   kfits <- k_model_fit(models, index = index, by.fold = TRUE) # dataframe for each fold
   fit.table <- agg_model_fit(kfits, index = "all", digits = 2)
+  # adjust model order to match model.names and other output
+  fit.table <- fit.table[order(factor(fit.table$model, levels = mnames)),]
 
   ## best model in each fold
   # best.model <- best_model(kfits, index = index)
@@ -114,6 +116,8 @@ kfa_report <- function(models,
 
   ## flagged problems
   flagged <- model_flags(models, kstructures, klambdas, kcorrs, krels)
+
+
 
   ## running report
   if(report.format == "word_document"){

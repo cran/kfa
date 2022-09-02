@@ -43,7 +43,7 @@ Chi-square value and degrees of freedom are always reported. Default is CFI and 
 \item{digits}{integer; number of decimal places to display in the report.}
 }
 \value{
-a summary report of factor structures and model fit within and between folds
+A summary report of factor structures and model fit within and between folds.
 }
 \description{
 Generates a report summarizing the factor analytic results over k-folds.
@@ -68,7 +68,7 @@ custom2f <- paste0("f1 =~ ", paste(colnames(sim.data)[1:10], collapse = " + "),
                    "\nf2 =~ ",paste(colnames(sim.data)[11:20], collapse = " + "))
 
 \donttest{
-mods <- kfa(variables = sim.data,
+mods <- kfa(data = sim.data,
             k = NULL, # prompts power analysis to determine number of folds
             cores = 2,
             custom.cfas = custom2f)
