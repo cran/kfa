@@ -16,6 +16,7 @@ kfa(
   rotation = "oblimin",
   simple = TRUE,
   min.loading = NA,
+  single.item = "none",
   ordered = FALSE,
   estimator = NULL,
   missing = "listwise",
@@ -42,11 +43,16 @@ kfa(
 \item{rotation}{character (case-sensitive); any rotation method listed in
 \code{\link[GPArotation]{rotations}} in the \code{GPArotation} package. Default is "oblimin".}
 
-\item{simple}{logical; Should the simple structure be returned (default) when converting EFA results to CFA syntax?
+\item{simple}{logical; Should the perfect simple structure be returned (default) when converting EFA results to CFA syntax?
 If \code{FALSE}, items can cross-load on multiple factors.}
 
 \item{min.loading}{numeric between 0 and 1 indicating the minimum (absolute) value of the loading for a variable on a factor
 when converting EFA results to CFA syntax. Must be specified when \code{simple = FALSE}.}
+
+\item{single.item}{character indicating how single-item factors should be treated.
+Use \code{"keep"} to keep them in the model when generating the CFA syntax or
+\code{"none"} (default) indicating the CFA syntax should not be generated for
+this model and \code{""} is returned.}
 
 \item{ordered}{logical; Should items be treated as ordinal and the
 polychoric correlations used in the factor analysis? When \code{FALSE} (default)

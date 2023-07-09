@@ -1,3 +1,10 @@
+# kfa 0.2.2
+
+*New features and adjustments:
+  * loading flag based on absolute value of loading
+  * The degrees of freedom calculation in `find_k` is now based on a CFA model rather than EFA
+  * Can toggle plots off when generating report - temporarily changed default to off to limit strong dependency with archived package
+
 # kfa 0.2.1
 
 *New features and adjustments:

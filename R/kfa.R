@@ -15,10 +15,14 @@
 #' @param power.args named \code{list} of arguments to pass to \code{\link[kfa]{find_k}} and \code{\link[semTools]{findRMSEAsamplesize}} when conducting power analysis to determine \code{k}.
 #' @param rotation character (case-sensitive); any rotation method listed in
 #' \code{\link[GPArotation]{rotations}} in the \code{GPArotation} package. Default is "oblimin".
-#' @param simple logical; Should the simple structure be returned (default) when converting EFA results to CFA syntax?
+#' @param simple logical; Should the perfect simple structure be returned (default) when converting EFA results to CFA syntax?
 #' If \code{FALSE}, items can cross-load on multiple factors.
 #' @param min.loading numeric between 0 and 1 indicating the minimum (absolute) value of the loading for a variable on a factor
 #' when converting EFA results to CFA syntax. Must be specified when \code{simple = FALSE}.
+#' @param single.item character indicating how single-item factors should be treated.
+#' Use \code{"keep"} to keep them in the model when generating the CFA syntax or
+#' \code{"none"} (default) indicating the CFA syntax should not be generated for
+#' this model and \code{""} is returned.
 #' @param ordered logical; Should items be treated as ordinal and the
 #' polychoric correlations used in the factor analysis? When \code{FALSE} (default)
 #' the Pearson correlation matrix is used. A character vector of item names is
@@ -96,7 +100,8 @@ kfa <- function(data,
                 seed = 101, cores = NULL,
                 custom.cfas = NULL,
                 power.args = list(rmsea0 = .05, rmseaA = .08),
-                rotation = "oblimin", simple = TRUE, min.loading = NA,
+                rotation = "oblimin", simple = TRUE,
+                min.loading = NA, single.item = "none",
                 ordered = FALSE, estimator = NULL, missing = "listwise", ...){
 
   data <- as.data.frame(data)
@@ -186,6 +191,7 @@ kfa <- function(data,
               rotation = rotation,
               simple = simple,
               min.loading = min.loading,
+              single.item = single.item,
               ordered = ordered,
               estimator = estimator,
               missing = missing,
@@ -236,6 +242,8 @@ kfa <- function(data,
         } else if(is.null(names(custom.cfas))){ # (if necessary) adding names to list
           names(custom.cfas) <- paste("custom", LETTERS[1:length(custom.cfas)])
         }
+        # replacing period with a space in custom names. Periods throw off creation of the appendix.
+        names(custom.cfas) <- gsub("\\.", " ", names(custom.cfas))
         # add custom models to set of models for each fold
         cfa.syntax <- lapply(mode.structure, function(x) c(x, custom.cfas))
       } else {
